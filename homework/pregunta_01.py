@@ -71,3 +71,73 @@ def pregunta_01():
 
 
     """
+    import zipfile
+    from pathlib import Path
+    from typing import List, Tuple
+
+    import pandas as pd
+
+
+    def extract_input_zip(zip_path: Path, dest: Path) -> None:
+        if dest.exists():
+            return
+        if not zip_path.exists():
+            raise FileNotFoundError(f"Zip file not found: {zip_path}")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(dest)
+
+
+    def read_split(input_root: Path, split: str) -> pd.DataFrame:
+        rows: List[Tuple[str, str]] = []
+        split_dir = input_root / split
+        if not split_dir.exists():
+            return pd.DataFrame(columns=["phrase", "target"])
+
+        for target_dir in sorted([p for p in split_dir.iterdir() if p.is_dir()]):
+            target = target_dir.name
+            for txt_file in sorted(target_dir.glob("*.txt")):
+                try:
+                    text = txt_file.read_text(encoding="utf-8").strip()
+                except Exception:
+                    # fallback a latin-1 si utf-8 falla
+                    text = txt_file.read_text(encoding="latin-1").strip()
+                rows.append((text, target))
+
+        df = pd.DataFrame(rows, columns=["phrase", "target"])
+        return df
+
+
+    def save_dataframe(df: pd.DataFrame, out_path: Path) -> None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(out_path, index=False)
+
+
+    # Rutas
+    repo_root = Path(".")
+    zip_path = repo_root / "files" / "input.zip"
+    input_dest = repo_root / "files" / "input"
+    output_dir = repo_root / "files" / "output"
+
+    # Extraer si es necesario
+    extract_input_zip(zip_path, input_dest)
+
+    # Determinar la carpeta que contiene directamente 'train' y 'test'.
+    if (input_dest / "train").exists():
+        actual_input_root = input_dest
+    else:
+        # buscar un subdirectorio que contenga 'train'
+        actual_input_root = None
+        for child in sorted([p for p in input_dest.iterdir() if p.is_dir()]):
+            if (child / "train").exists():
+                actual_input_root = child
+                break
+        if actual_input_root is None:
+            actual_input_root = input_dest
+
+    # Generar datasets
+    train_df = read_split(actual_input_root, "train")
+    test_df = read_split(actual_input_root, "test")
+
+    save_dataframe(train_df, output_dir / "train_dataset.csv")
+    save_dataframe(test_df, output_dir / "test_dataset.csv")
